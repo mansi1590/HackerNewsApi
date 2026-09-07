@@ -83,7 +83,7 @@ GET /beststories?n=10
 Given more time I would:
 
 - Add Redis (or another distributed cache) so multiple instances share one cached view of Hacker News.
-- Add retries, timeouts per request, and a circuit breaker around the Hacker News client (for example Polly).
+- Add retry/backoff and circuit-breaker policies around the Hacker News client (for example Polly).
 - Refresh the cache in the background before expiry so callers never wait on a cold fetch.
 - Add a Dockerfile and a GitHub Actions workflow for build, test, and publish.
 - Emit cache-hit / upstream-call metrics and a health endpoint that reports cache freshness.
