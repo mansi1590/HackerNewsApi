@@ -1,0 +1,9 @@
+@HackerNewsApi_HostAddress = http://localhost:5063
+
+GET {{HackerNewsApi_HostAddress}}/beststories?n=5
+Accept: application/json
+
+###
+
+GET {{HackerNewsApi_HostAddress}}/beststories?n=0
+Accept: application/json
