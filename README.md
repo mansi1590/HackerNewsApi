@@ -52,7 +52,7 @@ This service therefore:
 
 `BestStoriesService` is scoped so it does not capture the typed `HttpClient` (those are transient). A singleton refresh lock still coordinates one upstream refresh across concurrent requests.
 
-Default cache windows are 2 minutes for the assembled list and 10 minutes for items. Both are configurable in `appsettings.json`. Scores and comment counts can therefore be a few minutes stale; that is a deliberate trade-off against overloading Hacker News.
+Default cache windows are 2 minutes for the assembled list and 10 minutes for items. Both are configurable in `appsettings.json`.
 
 ```
 GET /beststories?n=10
@@ -75,6 +75,7 @@ GET /beststories?n=10
 - `time` is the Hacker News Unix timestamp converted to UTC ISO-8601.
 - `commentCount` maps from Hacker News `descendants`.
 - In-memory cache is sufficient for a single instance, which is the expected deployment for this exercise.
+- Scores and comment counts can be a few minutes stale because the assembled list and item details are cached; that is a deliberate trade-off against overloading Hacker News.
 - Hacker News currently returns a few hundred best-story IDs; the API still caps that list at `MaxStories` so a larger upstream payload cannot fan out unbounded item requests.
 
 ## Further work
