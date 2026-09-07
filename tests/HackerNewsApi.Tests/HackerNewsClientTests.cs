@@ -56,6 +56,20 @@ public sealed class HackerNewsClientTests
         Assert.Null(item);
     }
 
+    [Fact]
+    public async Task GetItemAsync_ReturnsNullWhenIndividualRequestTimesOut()
+    {
+        using var httpClient = new HttpClient(new TimeoutHandler())
+        {
+            BaseAddress = new Uri("https://hacker-news.firebaseio.com/v0/")
+        };
+        var client = new HackerNewsClient(httpClient, NullLogger<HackerNewsClient>.Instance);
+
+        var item = await client.GetItemAsync(1, CancellationToken.None);
+
+        Assert.Null(item);
+    }
+
     private static HttpClient CreateHttpClient(string content, string expectedUri, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         return new HttpClient(new StubHandler(content, expectedUri, statusCode))
@@ -85,6 +99,15 @@ public sealed class HackerNewsClientTests
             {
                 Content = new StringContent(_content, Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    private sealed class TimeoutHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromException<HttpResponseMessage>(
+                new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."));
         }
     }
 }

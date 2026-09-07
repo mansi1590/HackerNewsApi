@@ -38,6 +38,15 @@ public sealed class HackerNewsClient : IHackerNewsClient
         {
             return await _httpClient.GetFromJsonAsync<HackerNewsItem>($"item/{id}.json", JsonOptions, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.LogWarning(ex, "Timed out retrieving Hacker News item {ItemId}", id);
+            return null;
+        }
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Failed to retrieve Hacker News item {ItemId}", id);

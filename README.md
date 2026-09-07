@@ -52,7 +52,7 @@ This service therefore:
 
 `BestStoriesService` is scoped so it does not capture the typed `HttpClient` (those are transient). A singleton refresh lock still coordinates one upstream refresh across concurrent requests.
 
-Default cache windows are 2 minutes for the assembled list and 10 minutes for items. Both are configurable in `appsettings.json`.
+Default cache windows are 2 minutes for the assembled list and 10 minutes for items. Both are configurable in `appsettings.json`. Scores and comment counts can therefore be a few minutes stale; that is a deliberate trade-off against overloading Hacker News.
 
 ```
 GET /beststories?n=10
