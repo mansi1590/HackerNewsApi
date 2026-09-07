@@ -8,6 +8,8 @@ internal sealed class FakeHackerNewsClient : IHackerNewsClient
     private readonly Dictionary<int, HackerNewsItem?> _items;
     private int _bestStoryIdCalls;
     private int _itemCalls;
+    private int _inFlightItemCalls;
+    private int _maxConcurrentItemCalls;
 
     public FakeHackerNewsClient(IEnumerable<HackerNewsItem> items, TimeSpan? delay = null)
         : this(items.ToDictionary(item => item.Id, item => (HackerNewsItem?)item), delay)
@@ -28,6 +30,8 @@ internal sealed class FakeHackerNewsClient : IHackerNewsClient
 
     public int ItemCalls => Volatile.Read(ref _itemCalls);
 
+    public int MaxConcurrentItemCalls => Volatile.Read(ref _maxConcurrentItemCalls);
+
     public async Task<IReadOnlyList<int>> GetBestStoryIdsAsync(CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _bestStoryIdCalls);
@@ -37,9 +41,32 @@ internal sealed class FakeHackerNewsClient : IHackerNewsClient
 
     public async Task<HackerNewsItem?> GetItemAsync(int id, CancellationToken cancellationToken)
     {
-        Interlocked.Increment(ref _itemCalls);
-        await DelayIfNeeded(cancellationToken);
-        return _items.TryGetValue(id, out var item) ? item : null;
+        var inFlight = Interlocked.Increment(ref _inFlightItemCalls);
+        try
+        {
+            UpdateMaxConcurrent(inFlight);
+            Interlocked.Increment(ref _itemCalls);
+            await DelayIfNeeded(cancellationToken);
+            return _items.TryGetValue(id, out var item) ? item : null;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _inFlightItemCalls);
+        }
+    }
+
+    private void UpdateMaxConcurrent(int inFlight)
+    {
+        int currentMax;
+        do
+        {
+            currentMax = Volatile.Read(ref _maxConcurrentItemCalls);
+            if (inFlight <= currentMax)
+            {
+                return;
+            }
+        }
+        while (Interlocked.CompareExchange(ref _maxConcurrentItemCalls, inFlight, currentMax) != currentMax);
     }
 
     private async Task DelayIfNeeded(CancellationToken cancellationToken)

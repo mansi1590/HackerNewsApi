@@ -10,6 +10,7 @@ namespace HackerNewsApi.Tests;
 public sealed class BestStoriesServiceTests : IDisposable
 {
     private readonly MemoryCache _cache = new(new MemoryCacheOptions());
+    private readonly BestStoriesRefreshLock _refreshLock = new();
 
     [Fact]
     public async Task GetBestStoriesAsync_ReturnsStoriesInDescendingScoreOrder()
@@ -143,18 +144,48 @@ public sealed class BestStoriesServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetBestStoriesAsync_SingleFlightsConcurrentCacheMisses()
+    public async Task GetBestStoriesAsync_SingleFlightsConcurrentCacheMissesAcrossScopedInstances()
     {
         var client = new FakeHackerNewsClient([Story(1, "Once", score: 10)], TimeSpan.FromMilliseconds(150));
-        var service = CreateService(client);
+        var first = CreateService(client);
+        var second = CreateService(client);
+        var third = CreateService(client);
 
         await Task.WhenAll(
-            service.GetBestStoriesAsync(1, CancellationToken.None),
-            service.GetBestStoriesAsync(1, CancellationToken.None),
-            service.GetBestStoriesAsync(1, CancellationToken.None));
+            first.GetBestStoriesAsync(1, CancellationToken.None),
+            second.GetBestStoriesAsync(1, CancellationToken.None),
+            third.GetBestStoriesAsync(1, CancellationToken.None));
 
         Assert.Equal(1, client.BestStoryIdCalls);
         Assert.Equal(1, client.ItemCalls);
+    }
+
+    [Fact]
+    public async Task GetBestStoriesAsync_CapsUpstreamIdsToMaxStories()
+    {
+        var items = Enumerable.Range(1, 10).Select(id => Story(id, $"Story {id}", score: id)).ToArray();
+        var client = new FakeHackerNewsClient(items);
+        var service = CreateService(client, maxStories: 3, maxParallelItemRequests: 8);
+
+        var stories = await service.GetBestStoriesAsync(10, CancellationToken.None);
+
+        Assert.Equal(3, stories.Count);
+        Assert.Equal(3, client.ItemCalls);
+    }
+
+    [Fact]
+    public async Task GetBestStoriesAsync_DoesNotExceedMaxParallelItemRequests()
+    {
+        const int maxParallel = 3;
+        var items = Enumerable.Range(1, 20).Select(id => Story(id, $"Story {id}", score: id)).ToArray();
+        var client = new FakeHackerNewsClient(items, TimeSpan.FromMilliseconds(40));
+        var service = CreateService(client, maxStories: 20, maxParallelItemRequests: maxParallel);
+
+        await service.GetBestStoriesAsync(20, CancellationToken.None);
+
+        Assert.Equal(20, client.ItemCalls);
+        Assert.True(client.MaxConcurrentItemCalls <= maxParallel, $"Observed {client.MaxConcurrentItemCalls} in-flight item calls.");
+        Assert.Equal(maxParallel, client.MaxConcurrentItemCalls);
     }
 
     [Fact]
@@ -168,16 +199,20 @@ public sealed class BestStoriesServiceTests : IDisposable
         Assert.Single(stories);
     }
 
-    private BestStoriesService CreateService(IHackerNewsClient client)
+    private BestStoriesService CreateService(
+        IHackerNewsClient client,
+        int maxStories = 500,
+        int maxParallelItemRequests = 4)
     {
         var options = Microsoft.Extensions.Options.Options.Create(new HackerNewsOptions
         {
             StoriesCacheDuration = TimeSpan.FromMinutes(2),
             ItemCacheDuration = TimeSpan.FromMinutes(10),
-            MaxParallelItemRequests = 4
+            MaxParallelItemRequests = maxParallelItemRequests,
+            MaxStories = maxStories
         });
 
-        return new BestStoriesService(client, _cache, options, NullLogger<BestStoriesService>.Instance);
+        return new BestStoriesService(client, _cache, _refreshLock, options, NullLogger<BestStoriesService>.Instance);
     }
 
     private static HackerNewsItem Story(int id, string title, int score) => new()
@@ -194,6 +229,7 @@ public sealed class BestStoriesServiceTests : IDisposable
 
     public void Dispose()
     {
+        _refreshLock.Dispose();
         _cache.Dispose();
     }
 }

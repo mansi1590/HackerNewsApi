@@ -5,25 +5,27 @@ using Microsoft.Extensions.Options;
 
 namespace HackerNewsApi.Services;
 
-public sealed class BestStoriesService : IBestStoriesService, IDisposable
+public sealed class BestStoriesService : IBestStoriesService
 {
     internal const string StoriesCacheKey = "hacker-news:best-stories";
     private const string ItemCacheKeyPrefix = "hacker-news:item:";
 
     private readonly IHackerNewsClient _client;
     private readonly IMemoryCache _cache;
+    private readonly BestStoriesRefreshLock _refreshLock;
     private readonly HackerNewsOptions _options;
     private readonly ILogger<BestStoriesService> _logger;
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
     public BestStoriesService(
         IHackerNewsClient client,
         IMemoryCache cache,
+        BestStoriesRefreshLock refreshLock,
         IOptions<HackerNewsOptions> options,
         ILogger<BestStoriesService> logger)
     {
         _client = client;
         _cache = cache;
+        _refreshLock = refreshLock;
         _options = options.Value;
         _logger = logger;
     }
@@ -51,7 +53,9 @@ public sealed class BestStoriesService : IBestStoriesService, IDisposable
 
             _logger.LogInformation("Refreshing best stories from Hacker News.");
 
-            var ids = await _client.GetBestStoryIdsAsync(cancellationToken);
+            var ids = (await _client.GetBestStoryIdsAsync(cancellationToken))
+                .Take(_options.MaxStories)
+                .ToArray();
             var items = await GetItemsAsync(ids, cancellationToken);
 
             var stories = items
@@ -141,6 +145,4 @@ public sealed class BestStoriesService : IBestStoriesService, IDisposable
     };
 
     private static string ItemCacheKey(int id) => $"{ItemCacheKeyPrefix}{id}";
-
-    public void Dispose() => _refreshLock.Dispose();
 }

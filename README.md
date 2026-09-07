@@ -44,11 +44,13 @@ Hacker News exposes a list of best-story IDs and a separate item endpoint per ID
 
 This service therefore:
 
-1. Fetches `beststories.json` once per cache window.
+1. Fetches `beststories.json` once per cache window, then keeps at most `MaxStories` IDs (default 500) before any item fetch.
 2. Loads item details in parallel, with a concurrency cap.
 3. Caches individual items for longer than the ranked list, so a list refresh rarely needs a full refetch.
 4. Caches the mapped, score-sorted result.
 5. Coalesces concurrent cache misses behind a single refresh (single-flight), so a burst of traffic does not stampede Hacker News.
+
+`BestStoriesService` is scoped so it does not capture the typed `HttpClient` (those are transient). A singleton refresh lock still coordinates one upstream refresh across concurrent requests.
 
 Default cache windows are 2 minutes for the assembled list and 10 minutes for items. Both are configurable in `appsettings.json`.
 
@@ -73,6 +75,7 @@ GET /beststories?n=10
 - `time` is the Hacker News Unix timestamp converted to UTC ISO-8601.
 - `commentCount` maps from Hacker News `descendants`.
 - In-memory cache is sufficient for a single instance, which is the expected deployment for this exercise.
+- Hacker News currently returns a few hundred best-story IDs; the API still caps that list at `MaxStories` so a larger upstream payload cannot fan out unbounded item requests.
 
 ## Further work
 

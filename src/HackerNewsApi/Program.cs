@@ -27,7 +27,11 @@ builder.Services.AddHttpClient<IHackerNewsClient, HackerNewsClient>((serviceProv
     client.DefaultRequestHeaders.UserAgent.ParseAdd("HackerNewsApi/1.0");
 });
 
-builder.Services.AddSingleton<IBestStoriesService, BestStoriesService>();
+// Typed clients are transient. Keep the service scoped so it does not capture
+// a single HttpClient for the process lifetime. The refresh lock stays singleton
+// so concurrent requests still share one upstream refresh.
+builder.Services.AddSingleton<BestStoriesRefreshLock>();
+builder.Services.AddScoped<IBestStoriesService, BestStoriesService>();
 
 var app = builder.Build();
 
